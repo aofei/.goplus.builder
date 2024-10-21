@@ -12,6 +12,7 @@ import (
 
 	"github.com/goplus/builder/spx-backend/internal/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ProjectDTO is the DTO for projects.
@@ -535,6 +536,17 @@ func (ctrl *Controller) UpdateProject(ctx context.Context, owner, name string, p
 	}
 	if len(updates) > 0 {
 		if err := ctrl.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(mProject).Error; err != nil {
+				return err
+			}
+			if params.Visibility == mProject.Visibility.String() {
+				// Skip visibility update if it's already set to the desired state by another transaction.
+				delete(updates, "visibility")
+			}
+			if len(updates) == 0 {
+				return nil
+			}
+
 			if queryResult := tx.Model(mProject).Omit("Owner", "RemixedFromRelease").Updates(updates); queryResult.Error != nil {
 				return queryResult.Error
 			} else if queryResult.RowsAffected == 0 {
@@ -577,6 +589,13 @@ func (ctrl *Controller) DeleteProject(ctx context.Context, owner, name string) e
 		return err
 	}
 	if err := ctrl.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(mProject).Error; err != nil {
+			return err
+		}
+		if mProject.DeletedAt.Valid {
+			return nil
+		}
+
 		if err := tx.Delete(mProject).Error; err != nil {
 			return err
 		}
@@ -650,6 +669,54 @@ func (ctrl *Controller) DeleteProject(ctx context.Context, owner, name string) e
 	return nil
 }
 
+// RecordProjectView records a view for the specified project as the authenticated user.
+func (ctrl *Controller) RecordProjectView(ctx context.Context, owner, name string) error {
+	mUser, ok := UserFromContext(ctx)
+	if !ok {
+		return ErrUnauthorized
+	}
+
+	var mProject model.Project
+	if err := ctrl.db.WithContext(ctx).
+		Joins("JOIN user ON user.id = project.owner_id").
+		Where("user.username = ?", owner).
+		Where("project.name = ?", name).
+		First(&mProject).
+		Error; err != nil {
+		return fmt.Errorf("failed to get project %s/%s: %w", owner, name, err)
+	}
+
+	mUserProjectRelationship, err := model.FirstOrCreateUserProjectRelationship(ctx, ctrl.db, mUser.ID, mProject.ID)
+	if err != nil {
+		return err
+	}
+	if mUserProjectRelationship.LastViewedAt.Valid && time.Since(mUserProjectRelationship.LastViewedAt.Time) < time.Minute {
+		// Ignore views within a minute.
+		return nil
+	}
+
+	if err := ctrl.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if queryResult := tx.
+			Model(mUserProjectRelationship).
+			Where("last_viewed_at = ?", mUserProjectRelationship.LastViewedAt).
+			Updates(map[string]any{
+				"view_count":     gorm.Expr("view_count + 1"),
+				"last_viewed_at": sql.NullTime{Time: time.Now().UTC(), Valid: true},
+			}); queryResult.Error != nil {
+			return queryResult.Error
+		} else if queryResult.RowsAffected == 0 {
+			return nil
+		}
+		if err := tx.Model(&mProject).Update("view_count", gorm.Expr("view_count + 1")).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to record project view: %w", err)
+	}
+	return nil
+}
+
 // LikeProject likes the specified project as the authenticated user.
 func (ctrl *Controller) LikeProject(ctx context.Context, owner, name string) error {
 	mUser, ok := UserFromContext(ctx)
@@ -678,10 +745,8 @@ func (ctrl *Controller) LikeProject(ctx context.Context, owner, name string) err
 	if err := ctrl.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if queryResult := tx.
 			Model(mUserProjectRelationship).
-			Update("liked_at", sql.NullTime{
-				Time:  time.Now().UTC(),
-				Valid: true,
-			}); queryResult.Error != nil {
+			Where("liked_at IS NULL").
+			Update("liked_at", sql.NullTime{Time: time.Now().UTC(), Valid: true}); queryResult.Error != nil {
 			return queryResult.Error
 		} else if queryResult.RowsAffected == 0 {
 			return nil
@@ -759,6 +824,7 @@ func (ctrl *Controller) UnlikeProject(ctx context.Context, owner, name string) e
 	if err := ctrl.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if queryResult := tx.
 			Model(mUserProjectRelationship).
+			Where("liked_at = ?", mUserProjectRelationship.LikedAt).
 			Update("liked_at", sql.NullTime{}); queryResult.Error != nil {
 			return queryResult.Error
 		} else if queryResult.RowsAffected == 0 {

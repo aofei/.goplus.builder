@@ -270,10 +270,8 @@ func (ctrl *Controller) FollowUser(ctx context.Context, targetUsername string) e
 	if err := ctrl.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if queryResult := tx.
 			Model(mUserRelationship).
-			Update("followed_at", sql.NullTime{
-				Time:  time.Now().UTC(),
-				Valid: true,
-			}); queryResult.Error != nil {
+			Where("followed_at IS NULL").
+			Update("followed_at", sql.NullTime{Time: time.Now().UTC(), Valid: true}); queryResult.Error != nil {
 			return queryResult.Error
 		} else if queryResult.RowsAffected == 0 {
 			return nil
@@ -353,6 +351,7 @@ func (ctrl *Controller) UnfollowUser(ctx context.Context, targetUsername string)
 	if err := ctrl.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if queryResult := tx.
 			Model(mUserRelationship).
+			Where("followed_at = ?", mUserRelationship.FollowedAt).
 			Update("followed_at", sql.NullTime{}); queryResult.Error != nil {
 			return queryResult.Error
 		} else if queryResult.RowsAffected == 0 {
