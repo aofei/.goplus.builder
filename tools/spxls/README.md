@@ -2,7 +2,18 @@
 
 A lightweight Go+ language server for [spx](https://github.com/goplus/spx) that runs in the browser using WebAssembly.
 
-## LSP methods
+This project follows the [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/)
+using [JSON-RPC 2.0](https://www.jsonrpc.org/specification) for message exchange. However, unlike traditional LSP
+implementations that require a network transport layer, this project operates directly in the browser's memory space
+through its API interfaces.
+
+## Usage
+
+This project is a standard Go WebAssembly module. You can use it like any other Go WASM modules in your web applications.
+
+For detailed API references, please check the [index.d.ts](index.d.ts) file.
+
+## Supported LSP methods
 
 | Category | Method | Purpose & Explanation |
 |----------|--------|-----------------------|
@@ -29,6 +40,8 @@ A lightweight Go+ language server for [spx](https://github.com/goplus/spx) that 
 || [`textDocument/typeDefinition`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocument_typeDefinition) | Navigates to type definitions of variables/fields. |
 || [`textDocument/implementation`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocument_implementation) | Locates implementations. |
 || [`textDocument/references`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocument_references) | Finds all references of a symbol. |
+|| [`textDocument/documentLink`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocument_documentLink) | Provides clickable links within document content. |
+|| [`documentLink/resolve`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#documentLink_resolve) | Provides detailed target information for selected document links. |
 || [`textDocument/documentSymbol`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocument_documentSymbol) | Provides document symbols for outline/navigation. |
 || [`textDocument/documentHighlight`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#textDocument_documentHighlight) | Highlights other occurrences of selected symbol. |
 || [`workspace/symbol`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification/#workspace_symbol) | Provides workspace-wide symbol search with name matching patterns. |
@@ -69,34 +82,38 @@ interface ExecuteCommandParams {
     /**
      * Arguments that the command should be invoked with.
      */
-    arguments: RenameResourceParams[]
+    arguments: SpxRenameResourceParams[]
 }
 ```
 
 ```typescript
 /**
- * Parameters to rename a resource in the workspace.
+ * Parameters to rename a spx resource in the workspace.
  */
-interface RenameResourceParams {
+interface SpxRenameResourceParams {
     /**
-     * The resource.
+     * The spx resource.
      */
-    resource: ResourceIdentifier
+    resource: SpxResourceIdentifier
 
     /**
-     * The new name of the resource.
+     * The new name of the spx resource.
      */
     newName: string
 }
 ```
 
 ```typescript
-interface ResourceIdentifier {
+interface SpxResourceIdentifier {
     /**
-     * The resource's URI.
+     * The spx resource's URI.
      */
-    uri: URI
+    uri: SpxResourceUri
 }
+```
+
+```typescript
+type SpxResourceUri = string
 ```
 
 *Response:*
