@@ -3,14 +3,14 @@ package server
 import (
 	"testing"
 
-	"github.com/goplus/builder/tools/spxls/internal/mapfs"
+	"github.com/goplus/builder/tools/spxls/internal/vfs"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestServerFormatting(t *testing.T) {
+func TestServerTextDocumentFormatting(t *testing.T) {
 	t.Run("Normal", func(t *testing.T) {
 		s := &Server{
-			rootFS: mapfs.New(func() map[string][]byte {
+			rootFS: vfs.NewMapFS(func() map[string][]byte {
 				return map[string][]byte{
 					"main.spx": []byte(`
 // A spx game.
@@ -28,7 +28,7 @@ run "assets",    { Title:    "Bullet (by Go+)" }
 			TextDocument: TextDocumentIdentifier{URI: "main.spx"},
 		}
 
-		edits, err := s.formatting(params)
+		edits, err := s.textDocumentFormatting(params)
 		assert.NoError(t, err)
 		assert.Len(t, edits, 1)
 		assert.Equal(t, TextEdit{
@@ -50,7 +50,7 @@ run "assets", {Title: "Bullet (by Go+)"}
 
 	t.Run("NonSpxFile", func(t *testing.T) {
 		s := &Server{
-			rootFS: mapfs.New(func() map[string][]byte {
+			rootFS: vfs.NewMapFS(func() map[string][]byte {
 				return map[string][]byte{
 					"main.gop": []byte(`echo "Hello, Go+!"`),
 				}
@@ -60,27 +60,27 @@ run "assets", {Title: "Bullet (by Go+)"}
 			TextDocument: TextDocumentIdentifier{URI: "main.gop"},
 		}
 
-		edits, err := s.formatting(params)
+		edits, err := s.textDocumentFormatting(params)
 		assert.NoError(t, err)
 		assert.Nil(t, edits)
 	})
 
 	t.Run("FileNotFound", func(t *testing.T) {
-		s := &Server{rootFS: mapfs.New(func() map[string][]byte {
+		s := &Server{rootFS: vfs.NewMapFS(func() map[string][]byte {
 			return nil
 		})}
 		params := &DocumentFormattingParams{
 			TextDocument: TextDocumentIdentifier{URI: "notexist.spx"},
 		}
 
-		edits, err := s.formatting(params)
+		edits, err := s.textDocumentFormatting(params)
 		assert.Error(t, err)
 		assert.Nil(t, edits)
 	})
 
 	t.Run("NoChangesNeeded", func(t *testing.T) {
 		s := &Server{
-			rootFS: mapfs.New(func() map[string][]byte {
+			rootFS: vfs.NewMapFS(func() map[string][]byte {
 				return map[string][]byte{
 					"main.spx": []byte(`run "assets", {Title: "Bullet (by Go+)"}` + "\n"),
 				}
@@ -90,14 +90,14 @@ run "assets", {Title: "Bullet (by Go+)"}
 			TextDocument: TextDocumentIdentifier{URI: "main.spx"},
 		}
 
-		edits, err := s.formatting(params)
+		edits, err := s.textDocumentFormatting(params)
 		assert.NoError(t, err)
 		assert.Nil(t, edits)
 	})
 
 	t.Run("FormatError", func(t *testing.T) {
 		s := &Server{
-			rootFS: mapfs.New(func() map[string][]byte {
+			rootFS: vfs.NewMapFS(func() map[string][]byte {
 				return map[string][]byte{
 					"main.spx": []byte("vbr Foobar string"),
 				}
@@ -107,7 +107,7 @@ run "assets", {Title: "Bullet (by Go+)"}
 			TextDocument: TextDocumentIdentifier{URI: "main.spx"},
 		}
 
-		edits, err := s.formatting(params)
+		edits, err := s.textDocumentFormatting(params)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to format document")
 		assert.Nil(t, edits)
@@ -115,7 +115,7 @@ run "assets", {Title: "Bullet (by Go+)"}
 
 	t.Run("WithFormatSpx", func(t *testing.T) {
 		s := &Server{
-			rootFS: mapfs.New(func() map[string][]byte {
+			rootFS: vfs.NewMapFS(func() map[string][]byte {
 				return map[string][]byte{
 					"main.spx": []byte(`// A spx game.
 
@@ -140,7 +140,7 @@ run "assets", {Title: "Bullet (by Go+)"}
 			TextDocument: TextDocumentIdentifier{URI: "main.spx"},
 		}
 
-		edits, err := s.formatting(params)
+		edits, err := s.textDocumentFormatting(params)
 		assert.NoError(t, err)
 		assert.Len(t, edits, 1)
 		assert.Equal(t, TextEdit{
