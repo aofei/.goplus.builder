@@ -13,7 +13,7 @@ import (
 )
 
 // See https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification#textDocument_formatting
-func (s *Server) formatting(params *DocumentFormattingParams) ([]TextEdit, error) {
+func (s *Server) textDocumentFormatting(params *DocumentFormattingParams) ([]TextEdit, error) {
 	if path.Ext(string(params.TextDocument.URI)) != ".spx" {
 		return nil, nil // Not a spx source file.
 	}
