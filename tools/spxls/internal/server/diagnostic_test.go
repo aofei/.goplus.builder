@@ -22,6 +22,7 @@ onStart => {
 	for {
 		wait 0.1
 		Bullet.clone
+		play "biu"
 		setXYpos mouseX, mouseY
 	}
 }
@@ -39,6 +40,14 @@ onCloned => {
 	}
 }
 `),
+		"assets/index.json":                    []byte(`{"backdrops":[{"x":0,"y":0,"faceRight":0,"bitmapResolution":2,"name":"backdrop1","path":"backdrop1.png"}],"backdropIndex":0,"map":{"width":480,"height":360,"mode":"fillRatio"},"run":{"width":480,"height":360},"zorder":["MyAircraft","Bullet"]}`),
+		"assets/backdrop1.png":                 nil,
+		"assets/sprites/MyAircraft/index.json": []byte(`{"heading":90,"x":-14.502367071209733,"y":-151.76923076923077,"size":0.45,"rotationStyle":"normal","costumeIndex":0,"visible":true,"isDraggable":false,"pivot":{"x":0,"y":0},"costumes":[{"x":98,"y":122,"faceRight":0,"bitmapResolution":2,"name":"hero","path":"hero.png"}],"fAnimations":{},"animBindings":{}}`),
+		"assets/sprites/MyAircraft/hero.png":   nil,
+		"assets/sprites/Bullet/index.json":     []byte(`{"heading":0,"x":230,"y":185,"size":0.65,"rotationStyle":"normal","costumeIndex":0,"visible":false,"isDraggable":false,"pivot":{"x":0,"y":0},"costumes":[{"x":8,"y":20,"faceRight":90,"bitmapResolution":2,"name":"bullet","path":"bullet.png"}],"fAnimations":{},"animBindings":{}}`),
+		"assets/sprites/Bullet/bullet.png":     nil,
+		"assets/sounds/biu/index.json":         []byte(`{"rate":0,"sampleCount":0,"path":"biu.wav"}`),
+		"assets/sounds/biu/biu.wav":            nil,
 	}
 }
 
@@ -142,7 +151,9 @@ func TestServerWorkspaceDiagnostic(t *testing.T) {
 		foundFiles := make(map[string]bool)
 		for _, item := range report.Items {
 			fullReport := item.Value.(*WorkspaceFullDocumentDiagnosticReport)
-			foundFiles[string(fullReport.URI)] = true
+			relPath, err := s.fromDocumentURI(fullReport.URI)
+			require.NoError(t, err)
+			foundFiles[relPath] = true
 			assert.Equal(t, string(DiagnosticFull), fullReport.Kind)
 			assert.Empty(t, fullReport.Items)
 		}
@@ -187,5 +198,252 @@ var (
 		report, err := s.workspaceDiagnostic(&WorkspaceDiagnosticParams{})
 		require.EqualError(t, err, "no valid spx files found in main package")
 		require.Nil(t, report)
+	})
+
+	t.Run("SoundResourceNotFound", func(t *testing.T) {
+		s := New(vfs.NewMapFS(func() map[string][]byte {
+			return map[string][]byte{
+				"main.spx": []byte(`
+run "assets", {Title: "My Game"}
+`),
+				"MySprite.spx": []byte(`
+const ConstSoundName = "ConstSoundName"
+var VarSoundName string
+VarSoundName = "VarSoundName"
+var AutoBindingSoundName Sound
+onStart => {
+	play ConstSoundName
+	play "LiteralSoundName"
+	play VarSoundName
+	play AutoBindingSoundName
+}
+`),
+			}
+		}), nil)
+
+		report, err := s.workspaceDiagnostic(&WorkspaceDiagnosticParams{})
+		require.NoError(t, err)
+		require.NotNil(t, report)
+		assert.Len(t, report.Items, 2)
+		for _, item := range report.Items {
+			fullReport := item.Value.(*WorkspaceFullDocumentDiagnosticReport)
+			assert.Equal(t, string(DiagnosticFull), fullReport.Kind)
+			switch fullReport.URI {
+			case "file:///MySprite.spx":
+				assert.NotEmpty(t, fullReport.Items)
+				assert.Len(t, fullReport.Items, 4)
+				assert.Equal(t, `sound resource "AutoBindingSoundName" not found`, fullReport.Items[0].Message)
+				assert.Equal(t, `sound resource "ConstSoundName" not found`, fullReport.Items[1].Message)
+				assert.Equal(t, `sound resource "LiteralSoundName" not found`, fullReport.Items[2].Message)
+				assert.Equal(t, `sound resource "AutoBindingSoundName" not found`, fullReport.Items[3].Message)
+			default:
+				assert.Empty(t, fullReport.Items)
+			}
+		}
+	})
+
+	t.Run("BackdropResourceNotFound", func(t *testing.T) {
+		s := New(vfs.NewMapFS(func() map[string][]byte {
+			return map[string][]byte{
+				"main.spx": []byte(`
+onBackdrop "NonExistentBackdrop", func() {}
+run "assets", {Title: "My Game"}
+`),
+				"MySprite.spx": []byte(`
+const ConstBackdropName = "ConstBackdropName"
+var VarBackdropName string
+VarBackdropName = "VarBackdropName"
+onStart => {
+	onBackdrop ConstBackdropName, func() {}
+	onBackdrop "LiteralBackdropName", func() {}
+	onBackdrop VarBackdropName, func() {}
+}
+`),
+			}
+		}), nil)
+
+		report, err := s.workspaceDiagnostic(&WorkspaceDiagnosticParams{})
+		require.NoError(t, err)
+		require.NotNil(t, report)
+		assert.Len(t, report.Items, 2)
+
+		for _, item := range report.Items {
+			fullReport := item.Value.(*WorkspaceFullDocumentDiagnosticReport)
+			assert.Equal(t, string(DiagnosticFull), fullReport.Kind)
+			switch fullReport.URI {
+			case "file:///main.spx":
+				assert.NotEmpty(t, fullReport.Items)
+				assert.Len(t, fullReport.Items, 1)
+				assert.Equal(t, `backdrop resource "NonExistentBackdrop" not found`, fullReport.Items[0].Message)
+			case "file:///MySprite.spx":
+				assert.NotEmpty(t, fullReport.Items)
+				assert.Len(t, fullReport.Items, 2)
+				assert.Equal(t, `backdrop resource "ConstBackdropName" not found`, fullReport.Items[0].Message)
+				assert.Equal(t, `backdrop resource "LiteralBackdropName" not found`, fullReport.Items[1].Message)
+			default:
+				assert.Empty(t, fullReport.Items)
+			}
+		}
+	})
+
+	t.Run("SpriteResourceNotFound", func(t *testing.T) {
+		s := New(vfs.NewMapFS(func() map[string][]byte {
+			return map[string][]byte{
+				"main.spx": []byte(`
+var (
+	MySprite1 Sprite
+	MySprite2a MySprite2
+)
+run "assets", {Title: "My Game"}
+`),
+				"MySprite1.spx": []byte(`
+onStart => {
+	animate "roll-in"
+	MySprite2a.animate "roll-out"
+}
+`),
+				"MySprite2.spx": []byte(`
+onStart => {
+	MySprite1.animate "roll-out"
+	animate "roll-in"
+	MySprite2a.animate "roll-out"
+}
+`),
+			}
+		}), nil)
+
+		report, err := s.workspaceDiagnostic(&WorkspaceDiagnosticParams{})
+		require.NoError(t, err)
+		require.NotNil(t, report)
+		assert.Len(t, report.Items, 3)
+		for _, item := range report.Items {
+			fullReport := item.Value.(*WorkspaceFullDocumentDiagnosticReport)
+			assert.Equal(t, string(DiagnosticFull), fullReport.Kind)
+			switch fullReport.URI {
+			case "file:///main.spx":
+				assert.NotEmpty(t, fullReport.Items)
+				assert.Len(t, fullReport.Items, 1)
+				assert.Equal(t, `sprite resource "MySprite1" not found`, fullReport.Items[0].Message)
+			case "file:///MySprite1.spx":
+				assert.NotEmpty(t, fullReport.Items)
+				assert.Len(t, fullReport.Items, 2)
+				assert.Equal(t, `sprite resource "MySprite1" not found`, fullReport.Items[0].Message)
+				assert.Equal(t, `sprite resource "MySprite2" not found`, fullReport.Items[1].Message)
+			case "file:///MySprite2.spx":
+				assert.NotEmpty(t, fullReport.Items)
+				assert.Len(t, fullReport.Items, 3)
+				assert.Equal(t, `sprite resource "MySprite1" not found`, fullReport.Items[0].Message)
+				assert.Equal(t, `sprite resource "MySprite2" not found`, fullReport.Items[1].Message)
+				assert.Equal(t, `sprite resource "MySprite2" not found`, fullReport.Items[2].Message)
+			default:
+				assert.Empty(t, fullReport.Items)
+			}
+		}
+	})
+
+	t.Run("SpriteCostumeResourceNotFound", func(t *testing.T) {
+		s := New(vfs.NewMapFS(func() map[string][]byte {
+			return map[string][]byte{
+				"main.spx": []byte(`
+run "assets", {Title: "My Game"}
+`),
+				"MySprite.spx": []byte(`
+onStart => {
+	setCostume "NonExistentCostume"
+}
+`),
+				"assets/sprites/MySprite/index.json": []byte(`{}`),
+			}
+		}), nil)
+
+		report, err := s.workspaceDiagnostic(&WorkspaceDiagnosticParams{})
+		require.NoError(t, err)
+		require.NotNil(t, report)
+		assert.Len(t, report.Items, 2)
+		for _, item := range report.Items {
+			fullReport := item.Value.(*WorkspaceFullDocumentDiagnosticReport)
+			assert.Equal(t, string(DiagnosticFull), fullReport.Kind)
+			switch fullReport.URI {
+			case "file:///MySprite.spx":
+				assert.NotEmpty(t, fullReport.Items)
+				assert.Len(t, fullReport.Items, 1)
+				assert.Equal(t, `costume resource "NonExistentCostume" not found in sprite "MySprite"`, fullReport.Items[0].Message)
+			default:
+				assert.Empty(t, fullReport.Items)
+			}
+		}
+	})
+
+	t.Run("SpriteAnimationResourceNotFound", func(t *testing.T) {
+		s := New(vfs.NewMapFS(func() map[string][]byte {
+			return map[string][]byte{
+				"main.spx": []byte(`
+run "assets", {Title: "My Game"}
+`),
+				"MySprite.spx": []byte(`
+onStart => {
+	animate "roll-in"
+}
+`),
+				"assets/sprites/MySprite/index.json": []byte(`{}`),
+			}
+		}), nil)
+
+		report, err := s.workspaceDiagnostic(&WorkspaceDiagnosticParams{})
+		require.NoError(t, err)
+		require.NotNil(t, report)
+		assert.Len(t, report.Items, 2)
+		for _, item := range report.Items {
+			fullReport := item.Value.(*WorkspaceFullDocumentDiagnosticReport)
+			assert.Equal(t, string(DiagnosticFull), fullReport.Kind)
+			switch fullReport.URI {
+			case "file:///MySprite.spx":
+				assert.NotEmpty(t, fullReport.Items)
+				assert.Len(t, fullReport.Items, 1)
+				assert.Equal(t, `animation resource "roll-in" not found in sprite "MySprite"`, fullReport.Items[0].Message)
+			default:
+				assert.Empty(t, fullReport.Items)
+			}
+		}
+	})
+
+	t.Run("WidgetResourceNotFound", func(t *testing.T) {
+		s := New(vfs.NewMapFS(func() map[string][]byte {
+			return map[string][]byte{
+				"main.spx": []byte(`
+run "assets", {Title: "My Game"}
+`),
+				"MySprite.spx": []byte(`
+const ConstWidgetName = "ConstWidgetName"
+var VarWidgetName string
+VarWidgetName = "VarWidgetName"
+onStart => {
+	getWidget ConstWidgetName
+	getWidget "LiteralWidgetName"
+	getWidget VarWidgetName
+}
+`),
+				"assets/index.json": []byte(`{}`),
+			}
+		}), nil)
+
+		report, err := s.workspaceDiagnostic(&WorkspaceDiagnosticParams{})
+		require.NoError(t, err)
+		require.NotNil(t, report)
+		assert.Len(t, report.Items, 2)
+
+		for _, item := range report.Items {
+			fullReport := item.Value.(*WorkspaceFullDocumentDiagnosticReport)
+			assert.Equal(t, string(DiagnosticFull), fullReport.Kind)
+			switch fullReport.URI {
+			case "file:///MySprite.spx":
+				assert.NotEmpty(t, fullReport.Items)
+				assert.Len(t, fullReport.Items, 5)
+				assert.Equal(t, `widget resource "ConstWidgetName" not found`, fullReport.Items[0].Message)
+				assert.Equal(t, `widget resource "LiteralWidgetName" not found`, fullReport.Items[1].Message)
+			default:
+				assert.Empty(t, fullReport.Items)
+			}
+		}
 	})
 }
