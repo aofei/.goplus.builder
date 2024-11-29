@@ -8,7 +8,6 @@ import (
 	"path"
 	"strings"
 
-	"github.com/goplus/builder/tools/spxls/internal"
 	"github.com/goplus/builder/tools/spxls/internal/vfs"
 	"github.com/goplus/gogen"
 	gopast "github.com/goplus/gop/ast"
@@ -205,7 +204,7 @@ func (s *Server) diagnose() (*diagnosticResult, error) {
 					})
 				}
 			},
-			Importer: internal.NewImporter(result.fset),
+			Importer: s.importer,
 		},
 		&goptypesutil.Config{
 			Types: types.NewPackage("main", "main"),

@@ -118,6 +118,9 @@ interface SpxRenameResourceParams {
 ```
 
 ```typescript
+/**
+ * The spx resource's identifier.
+ */
 interface SpxResourceIdentifier {
   /**
    * The spx resource's URI.
@@ -127,6 +130,17 @@ interface SpxResourceIdentifier {
 ```
 
 ```typescript
+/**
+ * The spx resource's URI.
+ *
+ * @example
+ * - `spx://resources/sounds/MySound`
+ * - `spx://resources/sprites/MySprite`
+ * - `spx://resources/sprites/MySprite/costumes/MyCostume`
+ * - `spx://resources/sprites/MySprite/animations/MyAnimation`
+ * - `spx://resources/backdrops/MyBackdrop`
+ * - `spx://resources/widgets/MyWidget`
+ */
 type SpxResourceUri = string
 ```
 
