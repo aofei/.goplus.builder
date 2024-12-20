@@ -37,8 +37,3 @@ func (s *Server) textDocumentDocumentLink(params *DocumentLinkParams) ([]Documen
 	}
 	return links, nil
 }
-
-// See https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification#documentLink_resolve
-func (s *Server) documentLinkResolve(params *DocumentLink) (*DocumentLink, error) {
-	return params, nil // No additional resolution is needed at this time.
-}

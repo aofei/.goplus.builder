@@ -28,6 +28,12 @@ type SpxResourceRefKey interface {
 	URI() SpxResourceURI
 }
 
+// spxResourceToMarkdown converts a spx resource reference key to markdown
+// preview format.
+func spxResourceToMarkdown(refKey SpxResourceRefKey) string {
+	return fmt.Sprintf("<resource-preview resource=%q />\n", refKey.URI())
+}
+
 // SpxResourceRef is a reference to a spx resource.
 type SpxResourceRef struct {
 	Node gopast.Node
