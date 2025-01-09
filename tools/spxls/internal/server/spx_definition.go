@@ -113,6 +113,16 @@ var (
 	// in file scope.
 	SpxFileScopeDefinitions = []SpxDefinition{
 		{
+			ID:       SpxDefinitionIdentifier{Name: util.ToPtr("import_declaration")},
+			Overview: "import \"package\"",
+			Detail:   "Import package declaration, e.g., `import \"fmt\"`",
+
+			CompletionItemLabel:            "import",
+			CompletionItemKind:             KeywordCompletion,
+			CompletionItemInsertText:       "import \"${1:package}\"$0",
+			CompletionItemInsertTextFormat: SnippetTextFormat,
+		},
+		{
 			ID:       SpxDefinitionIdentifier{Name: util.ToPtr("func_declaration")},
 			Overview: "func name(params) { ... }",
 			Detail:   "Function declaration, e.g., `func add(a int, b int) int {}`",
@@ -274,37 +284,53 @@ var GetSpxSpriteImplType = sync.OnceValue(func() *types.Named {
 // GetSpxPkgDefinitions returns the spx definitions for the spx package.
 var GetSpxPkgDefinitions = sync.OnceValue(func() []SpxDefinition {
 	spxPkg := GetSpxPkg()
-	spxPkgDoc, err := pkgdata.GetPkgDoc(spxPkgPath)
+	spxPkgDoc, err := pkgdata.GetPkgDoc(spxPkg.Path())
 	if err != nil {
 		panic(fmt.Errorf("failed to get spx package doc: %w", err))
 	}
+	return GetPkgSpxDefinitions(spxPkg, spxPkgDoc)
+})
 
-	names := spxPkg.Scope().Names()
-	defs := make([]SpxDefinition, 0, len(names))
+// nonMainPkgSpxDefsCache is a cache of non-main package spx definitions.
+var nonMainPkgSpxDefsCache sync.Map // map[*types.Package][]SpxDefinition
+
+// GetPkgSpxDefinitions returns the spx definitions for the given package.
+func GetPkgSpxDefinitions(pkg *types.Package, pkgDoc *pkgdoc.PkgDoc) (defs []SpxDefinition) {
+	if pkg.Path() != "main" {
+		if defsIface, ok := nonMainPkgSpxDefsCache.Load(pkg); ok {
+			return defsIface.([]SpxDefinition)
+		}
+		defer func() {
+			nonMainPkgSpxDefsCache.Store(pkg, defs)
+		}()
+	}
+
+	names := pkg.Scope().Names()
+	defs = make([]SpxDefinition, 0, len(names))
 	for _, name := range names {
-		if obj := spxPkg.Scope().Lookup(name); obj != nil && obj.Exported() {
+		if obj := pkg.Scope().Lookup(name); obj != nil && obj.Exported() {
 			switch obj := obj.(type) {
 			case *types.Var:
-				defs = append(defs, NewSpxDefinitionForVar(obj, "", false, spxPkgDoc))
+				defs = append(defs, NewSpxDefinitionForVar(obj, "", false, pkgDoc))
 			case *types.Const:
-				defs = append(defs, NewSpxDefinitionForConst(obj, spxPkgDoc))
+				defs = append(defs, NewSpxDefinitionForConst(obj, pkgDoc))
 			case *types.TypeName:
-				defs = append(defs, NewSpxDefinitionForType(obj, spxPkgDoc))
+				defs = append(defs, NewSpxDefinitionForType(obj, pkgDoc))
 			case *types.Func:
 				if funcOverloads := expandGopOverloadableFunc(obj); funcOverloads != nil {
 					for _, funcOverload := range funcOverloads {
-						defs = append(defs, NewSpxDefinitionForFunc(funcOverload, "", spxPkgDoc))
+						defs = append(defs, NewSpxDefinitionForFunc(funcOverload, "", pkgDoc))
 					}
 				} else {
-					defs = append(defs, NewSpxDefinitionForFunc(obj, "", spxPkgDoc))
+					defs = append(defs, NewSpxDefinitionForFunc(obj, "", pkgDoc))
 				}
 			case *types.PkgName:
-				defs = append(defs, NewSpxDefinitionForPkg(obj, spxPkgDoc))
+				defs = append(defs, NewSpxDefinitionForPkg(obj, pkgDoc))
 			}
 		}
 	}
 	return slices.Clip(defs)
-})
+}
 
 // nonMainPkgSpxDefCacheForVars is a cache of non-main package spx definitions
 // for variables.

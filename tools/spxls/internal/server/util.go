@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io/fs"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/goplus/gogen"
@@ -52,14 +53,19 @@ func getStringLitOrConstValue(expr gopast.Expr, tv types.TypeAndValue) (string, 
 		if e.Kind != goptoken.STRING {
 			return "", false
 		}
-		s := e.Value[1 : len(e.Value)-1] // Unquote the string.
-		return s, true
+		v, err := strconv.Unquote(e.Value)
+		if err != nil {
+			return "", false
+		}
+		return v, true
 	case *gopast.Ident:
 		if tv.Value != nil {
 			// If it's a constant, we can get its value.
-			s := tv.Value.String()
-			s = s[1 : len(s)-1] // Unquote the string.
-			return s, true
+			v, err := strconv.Unquote(tv.Value.String())
+			if err != nil {
+				return "", false
+			}
+			return v, true
 		}
 		// There is nothing we can do for string variables.
 		return "", false

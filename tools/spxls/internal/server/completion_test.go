@@ -125,4 +125,78 @@ onStart => {
 			CompletionItemInsertTextFormat: PlainTextTextFormat,
 		}.CompletionItem())
 	})
+
+	t.Run("InComment", func(t *testing.T) {
+		s := New(newMapFSWithoutModTime(map[string][]byte{
+			"main.spx": []byte(`
+// Run My G
+run "assets", {Title: "My Game"}
+`),
+		}), nil)
+
+		items, err := s.textDocumentCompletion(&CompletionParams{
+			TextDocumentPositionParams: TextDocumentPositionParams{
+				TextDocument: TextDocumentIdentifier{URI: "file:///main.spx"},
+				Position:     Position{Line: 1, Character: 11},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, items)
+		assert.Empty(t, items)
+	})
+
+	t.Run("InStringLit", func(t *testing.T) {
+		s := New(newMapFSWithoutModTime(map[string][]byte{
+			"main.spx": []byte(`
+run "a
+`),
+		}), nil)
+
+		items, err := s.textDocumentCompletion(&CompletionParams{
+			TextDocumentPositionParams: TextDocumentPositionParams{
+				TextDocument: TextDocumentIdentifier{URI: "file:///main.spx"},
+				Position:     Position{Line: 1, Character: 6},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, items)
+		assert.Empty(t, items)
+	})
+
+	t.Run("InImportStringLit", func(t *testing.T) {
+		s := New(newMapFSWithoutModTime(map[string][]byte{
+			"main.spx": []byte(`
+import "g
+`),
+		}), nil)
+
+		items, err := s.textDocumentCompletion(&CompletionParams{
+			TextDocumentPositionParams: TextDocumentPositionParams{
+				TextDocument: TextDocumentIdentifier{URI: "file:///main.spx"},
+				Position:     Position{Line: 1, Character: 9},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, items)
+		assert.NotEmpty(t, items)
+	})
+
+	t.Run("InImportGroupStringLit", func(t *testing.T) {
+		s := New(newMapFSWithoutModTime(map[string][]byte{
+			"main.spx": []byte(`
+import (
+	"g
+`),
+		}), nil)
+
+		items, err := s.textDocumentCompletion(&CompletionParams{
+			TextDocumentPositionParams: TextDocumentPositionParams{
+				TextDocument: TextDocumentIdentifier{URI: "file:///main.spx"},
+				Position:     Position{Line: 2, Character: 3},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, items)
+		assert.NotEmpty(t, items)
+	})
 }
