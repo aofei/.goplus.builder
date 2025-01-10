@@ -14,7 +14,31 @@ const editorCtx = useEditorCtx()
 const projectRunnerRef = ref<InstanceType<typeof ProjectRunner>>()
 
 function handleConsole(type: 'log' | 'warn', args: unknown[]) {
-  // TODO: parse source
+  if (type === 'log' && args.length === 1 && typeof args[0] === 'string') {
+    try {
+      const logMsg = JSON.parse(args[0])
+      if (logMsg.level === 'ERROR' && logMsg.error && logMsg.msg === 'captured panic') {
+        editorCtx.runtime.addOutput({
+          kind: RuntimeOutputKind.Error,
+          time: logMsg.time,
+          message: logMsg.error,
+          source: {
+            textDocument: {
+              uri: `file:///${logMsg.file}`
+            },
+            range: {
+              start: { line: logMsg.line, column: logMsg.column },
+              end: { line: logMsg.line, column: logMsg.column }
+            }
+          }
+        })
+        return
+      }
+    } catch {
+      // If parsing fails, fall through to default handling.
+    }
+  }
+
   editorCtx.runtime.addOutput({
     kind: type === 'warn' ? RuntimeOutputKind.Error : RuntimeOutputKind.Log,
     time: Date.now(),

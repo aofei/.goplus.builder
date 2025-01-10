@@ -7,6 +7,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"log"
+	"log/slog"
+	"os"
 	"syscall/js"
 
 	_ "github.com/goplus/builder/ispx/pkg/github.com/goplus/spx"
@@ -57,7 +59,7 @@ func main() {
 
 	// Register patch for spx to support functions with generic type like `Gopt_Game_Gopx_GetWidget`.
 	// See details in https://github.com/goplus/builder/issues/765#issuecomment-2313915805
-	err = gopbuild.RegisterPackagePatch(ctx, "github.com/goplus/spx", `
+	if err := gopbuild.RegisterPackagePatch(ctx, "github.com/goplus/spx", `
 package spx
 
 import (
@@ -72,10 +74,22 @@ func Gopt_Game_Gopx_GetWidget[T any](sg ShapeGetter, name string) *T {
 		panic("GetWidget: type mismatch")
 	}
 }
-`)
-	if err != nil {
-		log.Fatalln("Failed to register package patch:", err)
+`); err != nil {
+		log.Fatalln("Failed to register package patch for github.com/goplus/spx:", err)
 	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	ctx.SetPanic(func(info *igop.PanicInfo) {
+		position := info.Position()
+		logger.Error(
+			"captured panic",
+			"error", info.Error,
+			"function", info.String(),
+			"file", position.Filename,
+			"line", position.Line,
+			"column", position.Column,
+		)
+	})
 
 	source, err := gopbuild.BuildFSDir(ctx, fs, "")
 	if err != nil {

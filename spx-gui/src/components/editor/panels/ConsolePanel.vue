@@ -24,7 +24,13 @@ function humanizeTime(time: number) {
 }
 
 function getOutputSourceLocation(output: RuntimeOutput) {
-  console.warn('TODO: use `output.source`', output) // TODO: see details in https://github.com/goplus/builder/issues/1096
+  if (output.source) {
+    return {
+      file: output.source.textDocument,
+      position: output.source.range.start
+    }
+  }
+  // Fallback to main.spx if no source location is available.
   return {
     file: { uri: 'file:///main.spx' },
     position: { line: 1, column: 1 }
